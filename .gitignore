@@ -1,1 +1,5 @@
 .idea/
+my_tool
+a.out
+*.o
+.ghc/
