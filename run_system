@@ -2,8 +2,7 @@
 
 # 1. Check if the user provided at least one argument
 if [ -z "$1" ]; then
-    echo "Usage: ./script.sh <command> [arguments]"
-    echo "Example: ./script.sh add my_folder"
+    echo "Usage: ./run_system.sh help"
     exit 1
 fi
 

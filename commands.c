@@ -88,7 +88,7 @@ void handle_remove(const char *filename) {
 
 void handle_help(void) {
     printf("\nAvailable Commands:\n");
-    printf("  add <dirname> <filename.dat>   : Creates a directory and a district.cfg inside it.\n");
+    printf("  add <dirname> <filename.dat>   : Adds a report.dat file to a directory and a district.cfg by default.\n");
     printf("  remove <target>                : Removes the specified target.\n");
     printf("  help                           : Displays this menu.\n\n");
 }

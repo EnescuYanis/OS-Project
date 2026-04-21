@@ -31,4 +31,4 @@ The system recognizes two roles: `manager` and `inspector`. Access is enforced b
 
 ### Compilation
 ```bash
-gcc -Wall -Wextra -o city_manager city_manager.c
+./run_system
