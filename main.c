@@ -1,8 +1,13 @@
 #include "commands.h"
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h> // Required for srand()
+#include <time.h>   // Required for time()
 
 int main(int argc, char *argv[]) {
+    // 1. Seed the random number generator ONCE at the start of the program
+    srand(time(NULL));
+
     if (argc < 2) {
         printf("Error: No command provided.\n Might be useful to run 'help' for more information.\n");
         handle_help();
@@ -31,8 +36,26 @@ int main(int argc, char *argv[]) {
         
     } else if (strcmp(command, "help") == 0) {
         handle_help();
+    } else if (strcmp(command, "list") == 0) {
+            if (argc < 3) {
+                printf("Error: The 'list' command requires a district ID.\n");
+                printf("Usage: ./my_tool list <district_id>\n");
+                return 1;
+            }
+            handle_list(argv[2]);
+        // -----------------------------
+
         
-    } else {
+    } 
+    else if (strcmp(command, "view") == 0) {
+        // Needs 4 arguments: ./my_tool view sector_7 12345
+        if (argc < 4) {
+            printf("Error: The 'view' command requires a district ID and a report ID.\n");
+            printf("Usage: ./my_tool view <district_id> <report_id>\n");
+            return 1;
+        }
+        handle_view(argv[2], argv[3]);}    
+    else {
         printf("Error: Unknown command '%s'.\n", command);
         handle_help();
         return 1;
