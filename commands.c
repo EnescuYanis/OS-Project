@@ -1,307 +1,707 @@
 #include "commands.h"
 #include <stdio.h>
 #include <string.h>
-#include <sys/stat.h> 
+#include <sys/stat.h>
 #include <sys/types.h>
-#include <unistd.h> 
+#include <unistd.h>
 #include <stdlib.h>
 #include <time.h>
-// Required for mkdir
+#include <fcntl.h>
+#include <errno.h>
 
+// ============================================================
+//  VISUAL UI HELPERS
+// ============================================================
 
-// --- Function Implementations ---
+void print_banner(const char *role, const char *user) {
+    printf("\n");
+    printf(COLOR_CYAN STYLE_BOLD);
+    printf("   ██████╗ ███╗   ███╗\n");
+    printf("  ██╔════╝ ████╗ ████║\n");
+    printf("  ██║      ██╔████╔██║\n");
+    printf("  ██║      ██║╚██╔╝██║\n");
+    printf("  ╚██████╗ ██║ ╚═╝ ██║\n");
+    printf("   ╚═════╝ ╚═╝     ╚═╝\n");
+    printf(COLOR_RESET);
+    printf("  " COLOR_WHITE "City Manager" COLOR_RESET
+           STYLE_DIM "  — Urban Infrastructure Reports\n" COLOR_RESET);
+    printf("\n");
 
-void make_directory_with_cfg(const char* filepath, const char* dir_name) {
-    char dir_path[1024];
-    char file_path[2048];
-    const char* fixed_filename = "district.cfg";
-
-    // 1. Construct the directory path (e.g., "./new_folder")
-    snprintf(dir_path, sizeof(dir_path), "%s/%s", filepath, dir_name);
-
-    // 2. Attempt to create the directory
-    if (mkdir(dir_path, 0755) == 0) {
-        printf("Directory created: %s\n", dir_path);
-        
-        // 3. Construct the file path (e.g., "./new_folder/district.cfg")
-        snprintf(file_path, sizeof(file_path), "%s/%s", dir_path, fixed_filename);
-
-        // 4. Create the .cfg file inside the new directory
-        FILE *file = fopen(file_path, "w");
-        if (file != NULL) {
-            fprintf(file, "# Configuration file: %s\n", fixed_filename);
-            fclose(file);
-            printf("File created: %s\n", file_path);
-        } else {
-            perror("Error creating .cfg file");
-        }
+    if (strcmp(role, "manager") == 0) {
+        printf("  " COLOR_GREEN STYLE_BOLD "[ MANAGER ]" COLOR_RESET
+               COLOR_WHITE "  User: " STYLE_BOLD "%s" COLOR_RESET "\n\n", user);
     } else {
-        perror("Error creating directory");
+        printf("  " COLOR_YELLOW STYLE_BOLD "[ INSPECTOR ]" COLOR_RESET
+               COLOR_WHITE "  User: " STYLE_BOLD "%s" COLOR_RESET "\n\n", user);
     }
 }
 
-void handle_add(const char *dir_name, const char *file_name) {
-    // Bold Cyan for the main execution header
-    printf(STYLE_BOLD COLOR_CYAN "Action: Executing ADD logic...\n" COLOR_RESET);
-    
-    spinner_loading(); 
-
-    struct stat st = {0};
-    char file_path[2048]; 
-
-    // 1. Check if the target directory exists
-    if (stat(dir_name, &st) == -1) {
-        printf(COLOR_YELLOW "\nDirectory '%s' does not exist. Creating it now...\n" COLOR_RESET, dir_name);
-        make_directory_with_cfg(".", dir_name); 
-    } else {
-        printf(COLOR_CYAN "\nDirectory '%s' found.\n" COLOR_RESET, dir_name);
-    }
-
-    // 2. Construct the path
-    snprintf(file_path, sizeof(file_path), "%s/%s", dir_name, file_name);
-
-    // 3. Touch the file to ensure it exists
-    FILE *file = fopen(file_path, "a");
-    if (file != NULL) {
-        fclose(file); 
-        printf(COLOR_GREEN "  [SUCCESS] " COLOR_RESET "File ready: %s\n", file_path);
-    } else {
-        printf(COLOR_RED "  [ERROR] " COLOR_RESET "Failed to create file: %s\n", file_path);
-        return; 
-    }
-
-    // 4. Set permissions to 664
-    if (chmod(file_path, 0664) == 0) {
-        printf(COLOR_GREEN "  [SUCCESS] " COLOR_RESET "Permissions set to 664.\n", file_path);
-    } else {
-        printf(COLOR_RED "  [ERROR] " COLOR_RESET "Failed to set file permissions.\n");
-    }
-
-    // 5. Trigger the interactive prompt for the user
-    printf(STYLE_BOLD COLOR_CYAN "\n--- Entering New Report Data ---\n" COLOR_RESET);
-    Record new_record = add_record_file();
-
-    // 6. Append the binary struct to the file
-    add_record(file_path, &new_record);
-
-    // Final Success Message
-    printf(COLOR_GREEN "\n  [SUCCESS] " COLOR_RESET "Report ID %d saved to %s!\n\n", new_record.id, file_path);
+/* Repeated character helper */
+static void repeat_char(const char *ch, int n) {
+    for (int i = 0; i < n; i++) printf("%s", ch);
 }
 
-
-void handle_remove(const char *filename) {
-    printf("Action: Executing REMOVE logic...\n");
-    printf("Target: %s\n", filename);
-    // TODO: Put your actual logic for removing the directory/file here
+void print_box_top(int width) {
+    printf(COLOR_CYAN BOX_TL);
+    repeat_char(BOX_H, width);
+    printf(BOX_TR COLOR_RESET "\n");
 }
 
-void handle_help(void) {
-    printf("\nAvailable Commands:\n");
-    printf("  add <dirname> <filename.dat>   : Adds a report.dat file to a directory.\n");
-    printf("  remove <target>                : Removes the specified target.\n");
-    printf("  list <district_id>             : Lists all reports in the specified district.\n");
-    printf("  view <district_id> <report_id> : Print the full details of a specific report.\n");
-    printf("  help                           : Displays this menu.\n\n");
+void print_box_bot(int width) {
+    printf(COLOR_CYAN BOX_BL);
+    repeat_char(BOX_H, width);
+    printf(BOX_BR COLOR_RESET "\n");
 }
 
+void print_box_mid(int width) {
+    printf(COLOR_CYAN BOX_ML);
+    repeat_char(BOX_H, width);
+    printf(BOX_MR COLOR_RESET "\n");
+}
 
-void spinner_loading() {
-    const char spinner_chars[] = "|/-\\";
-    int num_chars = 4;
-    
-    // We want to load for 2 seconds total.
-    // Let's update the spinner every 0.1 seconds (100,000 microseconds).
-    // 2.0s / 0.1s = 20 loops.
-    
-    for (int i = 0; i < 10; i++) {
-        // \r moves the cursor back to the start of the line
-        printf("\rExecuting command... %c", spinner_chars[i % num_chars]);
+/* Print one labelled row inside a box */
+void print_box_row(const char *label, const char *value, int width) {
+    // width = total inner width (label col + value col)
+    // label col = 14 chars, value fills the rest
+    int val_width = width - 16; // 2 spaces padding each side + 14 label
+    printf(COLOR_CYAN BOX_V COLOR_RESET
+           " " STYLE_BOLD COLOR_WHITE "%-14s" COLOR_RESET
+           " " COLOR_CYAN BOX_V COLOR_RESET
+           " %-*s " COLOR_CYAN BOX_V COLOR_RESET "\n",
+           label, val_width, value);
+}
+
+/* Progress bar replacing the old spinner */
+void progress_bar(const char *label, int steps, int delay_us) {
+    int bar_width = 30;
+    printf("\n");
+    for (int i = 0; i <= steps; i++) {
+        int filled = (i * bar_width) / steps;
+        printf("\r  " COLOR_CYAN "%s" COLOR_RESET " [", label);
+        printf(COLOR_GREEN);
+        for (int j = 0; j < filled; j++)    printf("█");
+        printf(COLOR_RESET COLOR_CYAN STYLE_DIM);
+        for (int j = filled; j < bar_width; j++) printf("░");
+        printf(COLOR_RESET "] " STYLE_BOLD "%3d%%" COLOR_RESET, (i * 100) / steps);
         fflush(stdout);
-        
-        usleep(100000); // Wait for 100,000 microseconds (0.1 seconds)
+        if (i < steps) usleep(delay_us);
     }
-    
-    // Clear the line and print the final message
-    printf("\rExecution Complete!        \n"); 
+    printf("\n\n");
 }
 
-void add_record(const char* filename, Record* record) {
-    FILE *file = fopen(filename, "ab"); // Changed to fopen
-    if (file == NULL) {
-        printf(COLOR_RED "  [ERROR] " COLOR_RESET "Error opening file %s for writing\n", filename);
-        return;
-    }
-
-    // Write the record to the file safely
-    fwrite(record, sizeof(Record), 1, file);
-    fclose(file);
-}
-
-// 3. Fixed input loop, memory, and return value
-Record add_record_file() {
-    Record new_record;
-    new_record.id = rand(); // Assumes srand() was called in main()
-    
-    printf("\nEnter longitude: ");
-    scanf("%f", &new_record.longitude);
-    
-    printf("Enter latitude: ");
-    scanf("%f", &new_record.latitude);  
-    
-    printf("Category (road/lighting/flooding/other): ");
-    // %49s prevents buffer overflows by limiting input to 49 chars (+ null terminator)
-    scanf("%49s", new_record.issue_category); 
-    
-    int security_level;
-    while (1) {
-        printf("Security level (1-3): ");
-        scanf("%d", &security_level);
-        
-        if (security_level >= 1 && security_level <= 3) {
-            new_record.security_level = security_level;
-            break; // Exit the loop because the input is good
-        }
-        
-        // Print a colorful warning if they messed up
-        printf(COLOR_YELLOW "  Invalid level. Must be between 1 and 3.\n" COLOR_RESET);
-    }
-    
-    new_record.timestamp = time(NULL); 
-    
-    // Fill out empty strings for the ones we didn't prompt for yet to avoid garbage data
-    new_record.inspector_name[0] = '\0';
-    new_record.description[0] = '\0';
-
-    return new_record;
-}
+// ============================================================
+//  CORE HELPERS
+// ============================================================
 
 void get_permission_string(mode_t mode, char *str) {
-    // Start with empty permissions
     strcpy(str, "---------");
-
-    // User permissions
     if (mode & S_IRUSR) str[0] = 'r';
     if (mode & S_IWUSR) str[1] = 'w';
     if (mode & S_IXUSR) str[2] = 'x';
-
-    // Group permissions
     if (mode & S_IRGRP) str[3] = 'r';
     if (mode & S_IWGRP) str[4] = 'w';
     if (mode & S_IXGRP) str[5] = 'x';
-
-    // Other permissions
     if (mode & S_IROTH) str[6] = 'r';
     if (mode & S_IWOTH) str[7] = 'w';
     if (mode & S_IXOTH) str[8] = 'x';
 }
 
-// --- The List Command ---
-void handle_list(const char *district_id) {
-    printf(STYLE_BOLD COLOR_CYAN "Action: Executing LIST logic for %s...\n\n" COLOR_RESET, district_id);
+int check_role_permission(const char *filepath, const char *role, int need_write) {
+    struct stat st;
+    if (stat(filepath, &st) == -1) return 1;
+    mode_t mode = st.st_mode;
+    int allowed = 0;
+    if (strcmp(role, "manager") == 0)
+        allowed = need_write ? (mode & S_IWUSR) : (mode & S_IRUSR);
+    else
+        allowed = need_write ? (mode & S_IWGRP) : (mode & S_IRGRP);
 
-    char file_path[2048];
-    snprintf(file_path, sizeof(file_path), "%s/reports.dat", district_id);
-
-    struct stat file_stat;
-
-    // 1. Check if the file exists and get its metadata
-    if (stat(file_path, &file_stat) == -1) {
-        printf(COLOR_RED "  [ERROR] " COLOR_RESET "Cannot access reports for district '%s'.\n", district_id);
-        return;
+    if (!allowed) {
+        char perms[10];
+        get_permission_string(mode, perms);
+        printf("\n  " COLOR_RED "╳  PERMISSION DENIED" COLOR_RESET
+               "  Role '%s' lacks %s on '%s' (perms: %s)\n\n",
+               role, need_write ? "write" : "read", filepath, perms);
     }
-
-    // 2. Format the Permissions
-    char perms[10]; // 9 characters for rw-rw-r-- plus the null terminator
-    get_permission_string(file_stat.st_mode, perms);
-
-    // 3. Format the Modification Time
-    char time_buf[64];
-    struct tm *tm_info = localtime(&file_stat.st_mtime);
-    strftime(time_buf, sizeof(time_buf), "%Y-%m-%d %H:%M:%S", tm_info);
-
-    // 4. Print the File Information Header
-    printf(STYLE_BOLD "--- File Information ---\n" COLOR_RESET);
-    printf("Path        : %s\n", file_path);
-    printf("Permissions : %s\n", perms);
-    printf("Size        : %lld bytes\n", (long long)file_stat.st_size);
-    printf("Last Mod    : %s\n", time_buf);
-    printf("------------------------\n\n");
-
-    // 5. Open the file to read the binary records
-    FILE *file = fopen(file_path, "rb"); // "rb" is Read Binary
-    if (file == NULL) {
-        printf(COLOR_RED "  [ERROR] " COLOR_RESET "Failed to open %s for reading.\n", file_path);
-        return;
-    }
-
-    printf(STYLE_BOLD "--- District Reports ---\n" COLOR_RESET);
-    
-    Record current_record;
-    int record_count = 0;
-
-    // 6. Loop through the file, printing ONLY the ID
-    while (fread(&current_record, sizeof(Record), 1, file) == 1) {
-        record_count++;
-        
-        // Print just the ID as a bullet point
-        printf(COLOR_YELLOW "  - Report ID: %d\n" COLOR_RESET, current_record.id);
-    }
-
-    if (record_count == 0) {
-        printf("  No reports found in this district.\n");
-    } else {
-        printf(COLOR_GREEN "\n  [SUCCESS] " COLOR_RESET "Found %d report(s).\n", record_count);
-    }
-
-    fclose(file);
+    return allowed != 0;
 }
 
-void handle_view(const char *district_id, const char *report_id) {
-    char file_path[2048];
-    snprintf(file_path, sizeof(file_path), "%s/reports.dat", district_id);
+void log_action(const char *district_id, const char *role, const char *user, const char *action) {
+    char log_path[2048];
+    snprintf(log_path, sizeof(log_path), "%s/logged_district", district_id);
 
-    // Convert the target ID from text to an integer
-    int target_id = atoi(report_id);
-
-    FILE *file = fopen(file_path, "rb"); 
-    if (file == NULL) {
-        printf(COLOR_RED "  [ERROR] " COLOR_RESET "Failed to open %s for reading.\n", file_path);
+    struct stat st;
+    if (stat(log_path, &st) == 0 && strcmp(role, "inspector") == 0) {
+        printf(COLOR_YELLOW "  ⚠  Inspector cannot write to logged_district (644). Log skipped.\n" COLOR_RESET);
         return;
     }
 
-    Record current_record;
+    FILE *log_file = fopen(log_path, "a");
+    if (log_file == NULL) return;
+    time_t now = time(NULL);
+    char time_buf[64];
+    strftime(time_buf, sizeof(time_buf), "%Y-%m-%d %H:%M:%S", localtime(&now));
+    fprintf(log_file, "%s\t%s\t%s\t%s\n", time_buf, user, role, action);
+    fclose(log_file);
+}
+
+void create_symlink(const char *district_id) {
+    char link_name[1024];
+    char target[2048];
+    snprintf(link_name, sizeof(link_name), "active_reports-%s", district_id);
+    snprintf(target,    sizeof(target),    "%s/reports.dat",    district_id);
+
+    struct stat lst;
+    if (lstat(link_name, &lst) == 0) {
+        if (S_ISLNK(lst.st_mode)) {
+            struct stat tst;
+            if (stat(link_name, &tst) == -1)
+                printf(COLOR_YELLOW "  ⚠  Dangling symlink: %s — Recreating.\n" COLOR_RESET, link_name);
+            unlink(link_name);
+        }
+    }
+    if (symlink(target, link_name) == 0)
+        printf("  " COLOR_GREEN "⇒" COLOR_RESET "  Symlink: " STYLE_BOLD "%s" COLOR_RESET " → %s\n", link_name, target);
+    else if (errno != EEXIST)
+        perror("  symlink");
+}
+
+// ============================================================
+//  DIRECTORY SETUP
+// ============================================================
+
+void make_directory_with_cfg(const char* filepath, const char* dir_name) {
+    char dir_path[1024], cfg_path[2048], log_path[2048];
+    snprintf(dir_path, sizeof(dir_path), "%s/%s", filepath, dir_name);
+
+    if (mkdir(dir_path, 0750) == 0) {
+        chmod(dir_path, 0750);
+        printf("  " COLOR_GREEN "✓" COLOR_RESET "  District dir: " STYLE_BOLD "%s" COLOR_RESET " (750)\n", dir_path);
+
+        snprintf(cfg_path, sizeof(cfg_path), "%s/district.cfg", dir_path);
+        FILE *cfg_file = fopen(cfg_path, "w");
+        if (cfg_file) {
+            fprintf(cfg_file, "severity_threshold=2\n");
+            fclose(cfg_file);
+            chmod(cfg_path, 0640);
+            printf("  " COLOR_GREEN "✓" COLOR_RESET "  Config:       %s (640)\n", cfg_path);
+        } else perror("cfg");
+
+        snprintf(log_path, sizeof(log_path), "%s/logged_district", dir_path);
+        FILE *log_file = fopen(log_path, "w");
+        if (log_file) {
+            fclose(log_file);
+            chmod(log_path, 0644);
+            printf("  " COLOR_GREEN "✓" COLOR_RESET "  Log file:     %s (644)\n", log_path);
+        } else perror("log");
+    } else {
+        perror("mkdir");
+    }
+}
+
+// ============================================================
+//  ADD
+// ============================================================
+
+void add_record(const char* filename, Record* record) {
+    int fd = open(filename, O_WRONLY | O_APPEND | O_CREAT, 0664);
+    if (fd == -1) {
+        printf(COLOR_RED "  ✗  Cannot open %s for writing\n" COLOR_RESET, filename);
+        return;
+    }
+    write(fd, record, sizeof(Record));
+    close(fd);
+}
+
+Record add_record_file(const char *user) {
+    Record new_record;
+    memset(&new_record, 0, sizeof(Record));
+    new_record.id = rand();
+
+    strncpy(new_record.inspector_name, user, sizeof(new_record.inspector_name) - 1);
+    new_record.inspector_name[sizeof(new_record.inspector_name) - 1] = '\0';
+
+    printf("  " COLOR_CYAN "Longitude" COLOR_RESET "  ► ");
+    scanf("%f", &new_record.longitude);
+
+    printf("  " COLOR_CYAN "Latitude " COLOR_RESET "  ► ");
+    scanf("%f", &new_record.latitude);
+
+    printf("  " COLOR_CYAN "Category " COLOR_RESET "  ► (road/lighting/flooding/other): ");
+    scanf("%49s", new_record.issue_category);
+
+    int security_level;
+    while (1) {
+        printf("  " COLOR_CYAN "Severity " COLOR_RESET "  ► (1=minor / 2=moderate / 3=critical): ");
+        if (scanf("%d", &security_level) == 1 && security_level >= 1 && security_level <= 3) {
+            new_record.security_level = security_level;
+            break;
+        }
+        // Clear whatever garbage is left in the input buffer
+        int ch; while ((ch = getchar()) != '\n' && ch != EOF);
+        printf("  " COLOR_YELLOW "⚠  Must be 1, 2 or 3.\n" COLOR_RESET);
+    }
+
+    printf("  " COLOR_CYAN "Description" COLOR_RESET " ► ");
+    int c; while ((c = getchar()) != '\n' && c != EOF);
+    fgets(new_record.description, sizeof(new_record.description), stdin);
+    new_record.description[strcspn(new_record.description, "\n")] = '\0';
+
+    new_record.timestamp = (size_t)time(NULL);
+    return new_record;
+}
+
+void handle_add(const char *district_id, const char *role, const char *user) {
+    print_banner(role, user);
+    printf(COLOR_CYAN STYLE_BOLD "  ╔═══ ADD REPORT ══════════════════════╗\n" COLOR_RESET);
+    printf(COLOR_CYAN            "  ║  District: %-26s║\n" COLOR_RESET, district_id);
+    printf(COLOR_CYAN STYLE_BOLD "  ╚══════════════════════════════════════╝\n\n" COLOR_RESET);
+
+    progress_bar("Preparing district", 20, 40000);
+
+    struct stat st = {0};
+    char file_path[2048];
+
+    if (stat(district_id, &st) == -1) {
+        printf(COLOR_YELLOW "  ⚠  District '%s' not found — creating...\n\n" COLOR_RESET, district_id);
+        make_directory_with_cfg(".", district_id);
+    } else {
+        printf("  " COLOR_GREEN "✓" COLOR_RESET "  District found: " STYLE_BOLD "%s\n\n" COLOR_RESET, district_id);
+    }
+
+    snprintf(file_path, sizeof(file_path), "%s/reports.dat", district_id);
+    int fd = open(file_path, O_CREAT | O_WRONLY | O_APPEND, 0664);
+    if (fd == -1) { printf(COLOR_RED "  ✗  Failed to create %s\n" COLOR_RESET, file_path); return; }
+    close(fd);
+    chmod(file_path, 0664);
+
+    if (!check_role_permission(file_path, role, 1)) return;
+
+    printf(COLOR_CYAN STYLE_BOLD "  ┌─ Enter Report Data ─────────────────┐\n\n" COLOR_RESET);
+    Record new_record = add_record_file(user);
+    printf(COLOR_CYAN STYLE_BOLD "\n  └─────────────────────────────────────┘\n\n" COLOR_RESET);
+
+    add_record(file_path, &new_record);
+    create_symlink(district_id);
+
+    char action_buf[128];
+    snprintf(action_buf, sizeof(action_buf), "add report_id=%d", new_record.id);
+    log_action(district_id, role, user, action_buf);
+
+    printf("  " COLOR_GREEN STYLE_BOLD "✓  Report saved!" COLOR_RESET
+           "  ID: " STYLE_BOLD COLOR_YELLOW "%d" COLOR_RESET "\n\n", new_record.id);
+}
+
+// ============================================================
+//  REMOVE REPORT
+// ============================================================
+
+void handle_remove(const char *district_id, const char *report_id, const char *role, const char *user) {
+    print_banner(role, user);
+
+    if (strcmp(role, "manager") != 0) {
+        printf(COLOR_RED "  ╳  Only managers may remove reports.\n\n" COLOR_RESET);
+        return;
+    }
+
+    char file_path[2048];
+    snprintf(file_path, sizeof(file_path), "%s/reports.dat", district_id);
+    if (!check_role_permission(file_path, role, 1)) return;
+
+    int target_id = atoi(report_id);
+
+    progress_bar("Scanning records", 15, 30000);
+
+    int fd = open(file_path, O_RDWR);
+    if (fd == -1) { printf(COLOR_RED "  ✗  Cannot open %s\n" COLOR_RESET, file_path); return; }
+
+    struct stat st;
+    fstat(fd, &st);
+    int total = (int)(st.st_size / sizeof(Record));
+
+    int target_index = -1;
+    Record tmp;
+    for (int i = 0; i < total; i++) {
+        lseek(fd, (off_t)i * sizeof(Record), SEEK_SET);
+        read(fd, &tmp, sizeof(Record));
+        if (tmp.id == target_id) { target_index = i; break; }
+    }
+
+    if (target_index == -1) {
+        printf(COLOR_YELLOW "  ⚠  Report ID %d not found in '%s'.\n\n" COLOR_RESET, target_id, district_id);
+        close(fd); return;
+    }
+
+    for (int i = target_index + 1; i < total; i++) {
+        lseek(fd, (off_t)i * sizeof(Record), SEEK_SET);
+        read(fd, &tmp, sizeof(Record));
+        lseek(fd, (off_t)(i - 1) * sizeof(Record), SEEK_SET);
+        write(fd, &tmp, sizeof(Record));
+    }
+    ftruncate(fd, (off_t)(total - 1) * sizeof(Record));
+    close(fd);
+
+    printf("  " COLOR_GREEN STYLE_BOLD "✓  Report %d removed" COLOR_RESET " from '%s'.\n\n", target_id, district_id);
+
+    char action_buf[128];
+    snprintf(action_buf, sizeof(action_buf), "remove_report report_id=%d", target_id);
+    log_action(district_id, role, user, action_buf);
+}
+
+// ============================================================
+//  LIST  (table layout)
+// ============================================================
+
+void handle_list(const char *district_id, const char *role, const char *user) {
+    print_banner(role, user);
+
+    char file_path[2048];
+    snprintf(file_path, sizeof(file_path), "%s/reports.dat", district_id);
+    if (!check_role_permission(file_path, role, 0)) return;
+
+    struct stat file_stat;
+    if (stat(file_path, &file_stat) == -1) {
+        printf(COLOR_RED "  ✗  Cannot access reports for '%s'.\n\n" COLOR_RESET, district_id);
+        return;
+    }
+
+    // Symlink check via lstat
+    char link_name[1024];
+    snprintf(link_name, sizeof(link_name), "active_reports-%s", district_id);
+    struct stat lst;
+    if (lstat(link_name, &lst) == 0 && S_ISLNK(lst.st_mode)) {
+        struct stat tst;
+        if (stat(link_name, &tst) == -1)
+            printf(COLOR_YELLOW "  ⚠  Dangling symlink: %s\n" COLOR_RESET, link_name);
+    }
+
+    char perms[10];
+    get_permission_string(file_stat.st_mode, perms);
+    char time_buf[64];
+    strftime(time_buf, sizeof(time_buf), "%Y-%m-%d %H:%M:%S", localtime(&file_stat.st_mtime));
+
+    // File info box
+    int W = 52;
+    printf(COLOR_CYAN STYLE_BOLD);
+    printf("  ╔"); repeat_char("═", W); printf("╗\n");
+    printf("  ║  %-*s║\n", W-1, " FILE INFORMATION");
+    printf("  ╠"); repeat_char("═", W); printf("╣\n");
+    printf(COLOR_RESET);
+
+    char val[2200];
+    snprintf(val, sizeof(val), "%s", file_path);
+    printf("  " COLOR_CYAN "║" COLOR_RESET " " STYLE_BOLD "%-12s" COLOR_RESET " " COLOR_CYAN "│" COLOR_RESET " %-*s " COLOR_CYAN "║" COLOR_RESET "\n", "Path", W-17, val);
+    printf("  " COLOR_CYAN "║" COLOR_RESET " " STYLE_BOLD "%-12s" COLOR_RESET " " COLOR_CYAN "│" COLOR_RESET " %-*s " COLOR_CYAN "║" COLOR_RESET "\n", "Permissions", W-17, perms);
+    snprintf(val, sizeof(val), "%lld bytes", (long long)file_stat.st_size);
+    printf("  " COLOR_CYAN "║" COLOR_RESET " " STYLE_BOLD "%-12s" COLOR_RESET " " COLOR_CYAN "│" COLOR_RESET " %-*s " COLOR_CYAN "║" COLOR_RESET "\n", "Size", W-17, val);
+    printf("  " COLOR_CYAN "║" COLOR_RESET " " STYLE_BOLD "%-12s" COLOR_RESET " " COLOR_CYAN "│" COLOR_RESET " %-*s " COLOR_CYAN "║" COLOR_RESET "\n", "Last Mod", W-17, time_buf);
+
+    printf(COLOR_CYAN STYLE_BOLD);
+    printf("  ╠"); repeat_char("═", W); printf("╣\n");
+    printf("  ║  %-*s║\n", W-1, " REPORTS");
+    printf("  ╠═══════════╦"); repeat_char("═", W-14); printf("╣\n");
+    printf("  ║ " STYLE_BOLD "%-9s" COLOR_RESET COLOR_CYAN " ║" COLOR_RESET " %-*s " COLOR_CYAN "║\n" COLOR_RESET, " ID", W-17, "Category         Sev  Inspector");
+    printf(COLOR_CYAN "  ╠═══════════╬"); repeat_char("═", W-14); printf("╣\n" COLOR_RESET);
+
+    int fd = open(file_path, O_RDONLY);
+    if (fd == -1) {
+        printf(COLOR_RED "  ✗  Cannot open file.\n\n" COLOR_RESET); return;
+    }
+
+    Record r;
+    int count = 0;
+    while (read(fd, &r, sizeof(Record)) == sizeof(Record)) {
+        count++;
+        // severity color
+        const char *sev_color = r.security_level == 3 ? COLOR_RED :
+                                r.security_level == 2 ? COLOR_YELLOW : COLOR_GREEN;
+        char row[128];
+        snprintf(row, sizeof(row), "%-16s %s%d" COLOR_RESET "    %s",
+                 r.issue_category, sev_color, r.security_level, r.inspector_name);
+        printf("  " COLOR_CYAN "║" COLOR_RESET " " COLOR_YELLOW STYLE_BOLD "%9d" COLOR_RESET
+               " " COLOR_CYAN "║" COLOR_RESET " %-*s " COLOR_CYAN "║\n" COLOR_RESET,
+               r.id, (int)(W-17+strlen(sev_color)+strlen(COLOR_RESET)), row);
+    }
+    close(fd);
+
+    printf(COLOR_CYAN "  ╚═══════════╩"); repeat_char("═", W-14); printf("╝\n\n" COLOR_RESET);
+
+    if (count == 0)
+        printf("  " COLOR_YELLOW "No reports found.\n\n" COLOR_RESET);
+    else
+        printf("  " COLOR_GREEN STYLE_BOLD "✓  %d report(s) listed.\n\n" COLOR_RESET, count);
+
+    log_action(district_id, role, user, "list");
+}
+
+// ============================================================
+//  VIEW
+// ============================================================
+
+void handle_view(const char *district_id, const char *report_id, const char *role, const char *user) {
+    print_banner(role, user);
+
+    char file_path[2048];
+    snprintf(file_path, sizeof(file_path), "%s/reports.dat", district_id);
+    if (!check_role_permission(file_path, role, 0)) return;
+
+    int target_id = atoi(report_id);
+    int fd = open(file_path, O_RDONLY);
+    if (fd == -1) { printf(COLOR_RED "  ✗  Cannot open %s\n\n" COLOR_RESET, file_path); return; }
+
+    Record r;
     int found = 0;
-
-    // Loop through the file until we find the exact ID
-    while (fread(&current_record, sizeof(Record), 1, file) == 1) {
-        if (current_record.id == target_id) {
+    while (read(fd, &r, sizeof(Record)) == sizeof(Record)) {
+        if (r.id == target_id) {
             found = 1;
-            
-            // Format the timestamp
             char record_time[64];
-            time_t timestamp = (time_t)current_record.timestamp;
-            struct tm *rec_tm_info = localtime(&timestamp);
-            strftime(record_time, sizeof(record_time), "%Y-%m-%d %H:%M:%S", rec_tm_info);
+            time_t ts = (time_t)r.timestamp;
+            strftime(record_time, sizeof(record_time), "%Y-%m-%d %H:%M:%S", localtime(&ts));
 
-            // Print the FULL data
-            printf(STYLE_BOLD COLOR_CYAN "\n--- Full Report Details ---\n" COLOR_RESET);
-            printf(COLOR_YELLOW "Report ID    : %d\n" COLOR_RESET, current_record.id);
-            // Using a ternary operator to print "N/A" if the string is empty
-            printf("Inspector    : %s\n", current_record.inspector_name[0] != '\0' ? current_record.inspector_name : "N/A");
-            printf("Category     : %s\n", current_record.issue_category);
-            printf("Security Lvl : %d\n", current_record.security_level);
-            printf("Location     : Lat %.4f, Lon %.4f\n", current_record.latitude, current_record.longitude);
-            printf("Logged At    : %s\n", record_time);
-            printf("Description  : %s\n", current_record.description[0] != '\0' ? current_record.description : "N/A");
-            printf("---------------------------\n\n");
-            
-            break; // Stop searching once we found it
+            const char *sev_color = r.security_level == 3 ? COLOR_RED :
+                                    r.security_level == 2 ? COLOR_YELLOW : COLOR_GREEN;
+            const char *sev_label = r.security_level == 3 ? "CRITICAL" :
+                                    r.security_level == 2 ? "MODERATE" : "MINOR";
+
+            int W = 48;
+            printf(COLOR_CYAN STYLE_BOLD "  ╔"); repeat_char("═", W); printf("╗\n");
+            printf("  ║  REPORT #%-*d║\n", W-9, r.id);
+            printf("  ╠"); repeat_char("═", W); printf("╣\n" COLOR_RESET);
+
+            char val[256];
+            #define ROW(lbl, v) \
+                printf("  " COLOR_CYAN "║" COLOR_RESET " " STYLE_BOLD "%-12s" COLOR_RESET \
+                       " " COLOR_CYAN "│" COLOR_RESET " %-*s " COLOR_CYAN "║" COLOR_RESET "\n", lbl, W-17, v)
+
+            ROW("Inspector",  r.inspector_name[0] ? r.inspector_name : "N/A");
+            ROW("Category",   r.issue_category);
+            snprintf(val, sizeof(val), "%s%d — %s" COLOR_RESET, sev_color, r.security_level, sev_label);
+            printf("  " COLOR_CYAN "║" COLOR_RESET " " STYLE_BOLD "%-12s" COLOR_RESET
+                   " " COLOR_CYAN "│" COLOR_RESET " %-*s " COLOR_CYAN "║" COLOR_RESET "\n",
+                   "Severity", W - 17 + (int)(strlen(sev_color) + strlen(COLOR_RESET)), val);
+            snprintf(val, sizeof(val), "Lat %.4f  Lon %.4f", r.latitude, r.longitude);
+            ROW("Location", val);
+            ROW("Logged At",  record_time);
+            ROW("Description", r.description[0] ? r.description : "N/A");
+            #undef ROW
+
+            printf(COLOR_CYAN STYLE_BOLD "  ╚"); repeat_char("═", W); printf("╝\n\n" COLOR_RESET);
+            break;
+        }
+    }
+    close(fd);
+
+    if (!found)
+        printf(COLOR_YELLOW "  ⚠  Report ID %d not found in '%s'.\n\n" COLOR_RESET, target_id, district_id);
+
+    log_action(district_id, role, user, "view");
+}
+
+// ============================================================
+//  UPDATE THRESHOLD
+// ============================================================
+
+void handle_update_threshold(const char *district_id, const char *value, const char *role, const char *user) {
+    print_banner(role, user);
+
+    if (strcmp(role, "manager") != 0) {
+        printf(COLOR_RED "  ╳  Only managers may update the threshold.\n\n" COLOR_RESET);
+        return;
+    }
+
+    char cfg_path[2048];
+    snprintf(cfg_path, sizeof(cfg_path), "%s/district.cfg", district_id);
+
+    struct stat st;
+    if (stat(cfg_path, &st) == -1) {
+        printf(COLOR_RED "  ✗  Cannot stat %s.\n\n" COLOR_RESET, cfg_path);
+        return;
+    }
+
+    mode_t perms = st.st_mode & 0777;
+    if (perms != 0640) {
+        char ps[10]; get_permission_string(st.st_mode, ps);
+        printf(COLOR_RED "  ✗  district.cfg permissions altered (expected 640, got %s). Refusing.\n\n" COLOR_RESET, ps);
+        return;
+    }
+    if (!check_role_permission(cfg_path, role, 1)) return;
+
+    progress_bar("Writing config", 10, 30000);
+
+    FILE *cfg = fopen(cfg_path, "w");
+    if (!cfg) { perror("fopen"); return; }
+    fprintf(cfg, "severity_threshold=%s\n", value);
+    fclose(cfg);
+    chmod(cfg_path, 0640);
+
+    printf("  " COLOR_GREEN STYLE_BOLD "✓  Threshold updated to %s" COLOR_RESET " in %s\n\n", value, cfg_path);
+
+    char action_buf[128];
+    snprintf(action_buf, sizeof(action_buf), "update_threshold value=%s", value);
+    log_action(district_id, role, user, action_buf);
+}
+
+// ============================================================
+//  FILTER
+// ============================================================
+
+int parse_condition(const char *input, char *field, char *op, char *value) {
+    char buf[256];
+    strncpy(buf, input, sizeof(buf) - 1);
+    buf[sizeof(buf) - 1] = '\0';
+    char *fc = strchr(buf, ':');
+    if (!fc) return 0;
+    *fc = '\0';
+    strcpy(field, buf);
+    char *sc = strchr(fc + 1, ':');
+    if (!sc) return 0;
+    *sc = '\0';
+    strcpy(op, fc + 1);
+    strcpy(value, sc + 1);
+    return 1;
+}
+
+int match_condition(Record *r, const char *field, const char *op, const char *value) {
+    if (strcmp(field, "severity") == 0) {
+        int rv = r->security_level, cv = atoi(value);
+        if (strcmp(op,"==") == 0) return rv == cv;
+        if (strcmp(op,"!=") == 0) return rv != cv;
+        if (strcmp(op,"<")  == 0) return rv <  cv;
+        if (strcmp(op,"<=") == 0) return rv <= cv;
+        if (strcmp(op,">")  == 0) return rv >  cv;
+        if (strcmp(op,">=") == 0) return rv >= cv;
+    } else if (strcmp(field, "timestamp") == 0) {
+        size_t rv = r->timestamp, cv = (size_t)atoll(value);
+        if (strcmp(op,"==") == 0) return rv == cv;
+        if (strcmp(op,"!=") == 0) return rv != cv;
+        if (strcmp(op,"<")  == 0) return rv <  cv;
+        if (strcmp(op,"<=") == 0) return rv <= cv;
+        if (strcmp(op,">")  == 0) return rv >  cv;
+        if (strcmp(op,">=") == 0) return rv >= cv;
+    } else if (strcmp(field, "category") == 0) {
+        int c = strcmp(r->issue_category, value);
+        if (strcmp(op,"==") == 0) return c == 0;
+        if (strcmp(op,"!=") == 0) return c != 0;
+    } else if (strcmp(field, "inspector") == 0) {
+        int c = strcmp(r->inspector_name, value);
+        if (strcmp(op,"==") == 0) return c == 0;
+        if (strcmp(op,"!=") == 0) return c != 0;
+    }
+    return 0;
+}
+
+void handle_filter(const char *district_id, int num_conditions, char **conditions, const char *role, const char *user) {
+    print_banner(role, user);
+
+    char file_path[2048];
+    snprintf(file_path, sizeof(file_path), "%s/reports.dat", district_id);
+    if (!check_role_permission(file_path, role, 0)) return;
+
+    char fields[10][64], ops[10][8], values[10][128];
+    for (int i = 0; i < num_conditions; i++) {
+        if (!parse_condition(conditions[i], fields[i], ops[i], values[i])) {
+            printf(COLOR_RED "  ✗  Bad condition '%s'. Use field:op:value.\n\n" COLOR_RESET, conditions[i]);
+            return;
         }
     }
 
-    if (!found) {
-        printf(COLOR_YELLOW "  [WARNING] " COLOR_RESET "Report ID %d not found in %s.\n", target_id, district_id);
-    }
+    printf(COLOR_CYAN STYLE_BOLD "  Filter: " COLOR_RESET);
+    for (int i = 0; i < num_conditions; i++)
+        printf(COLOR_YELLOW "%s" COLOR_RESET "%s", conditions[i], i < num_conditions-1 ? "  AND  " : "");
+    printf("\n\n");
 
-    fclose(file);
+    progress_bar("Scanning records", 12, 25000);
+
+    int fd = open(file_path, O_RDONLY);
+    if (fd == -1) { printf(COLOR_RED "  ✗  Cannot open %s\n\n" COLOR_RESET, file_path); return; }
+
+    Record r;
+    int match_count = 0;
+
+    while (read(fd, &r, sizeof(Record)) == sizeof(Record)) {
+        int all_match = 1;
+        for (int i = 0; i < num_conditions; i++)
+            if (!match_condition(&r, fields[i], ops[i], values[i])) { all_match = 0; break; }
+
+        if (all_match) {
+            match_count++;
+            char record_time[64];
+            time_t ts = (time_t)r.timestamp;
+            strftime(record_time, sizeof(record_time), "%Y-%m-%d %H:%M:%S", localtime(&ts));
+
+            const char *sc = r.security_level == 3 ? COLOR_RED :
+                             r.security_level == 2 ? COLOR_YELLOW : COLOR_GREEN;
+
+            int W = 46;
+            printf(COLOR_CYAN "  ┌"); repeat_char("─", W); printf("┐\n");
+            printf("  │ " COLOR_YELLOW STYLE_BOLD "#%-*d" COLOR_RESET COLOR_CYAN "│\n" COLOR_RESET, W-2, r.id);
+            printf(COLOR_CYAN "  ├"); repeat_char("─", W); printf("┤\n" COLOR_RESET);
+
+            char val[256];
+            #define FROW(lbl, v) \
+                printf("  " COLOR_CYAN "│" COLOR_RESET " " STYLE_BOLD "%-11s" COLOR_RESET \
+                       " %-*s " COLOR_CYAN "│\n" COLOR_RESET, lbl, W-14, v)
+
+            FROW("Inspector:", r.inspector_name[0] ? r.inspector_name : "N/A");
+            FROW("Category:", r.issue_category);
+            snprintf(val, sizeof(val), "%s%d" COLOR_RESET, sc, r.security_level);
+            printf("  " COLOR_CYAN "│" COLOR_RESET " " STYLE_BOLD "%-11s" COLOR_RESET
+                   " %-*s " COLOR_CYAN "│\n" COLOR_RESET,
+                   "Severity:", W - 14 + (int)(strlen(sc) + strlen(COLOR_RESET)), val);
+            snprintf(val, sizeof(val), "Lat %.4f  Lon %.4f", r.latitude, r.longitude);
+            FROW("Location:", val);
+            FROW("Time:", record_time);
+            FROW("Desc:", r.description[0] ? r.description : "N/A");
+            #undef FROW
+            printf(COLOR_CYAN "  └"); repeat_char("─", W); printf("┘\n\n" COLOR_RESET);
+        }
+    }
+    close(fd);
+
+    if (match_count == 0)
+        printf("  " COLOR_YELLOW "No records matched.\n\n" COLOR_RESET);
+    else
+        printf("  " COLOR_GREEN STYLE_BOLD "✓  %d record(s) matched.\n\n" COLOR_RESET, match_count);
+
+    log_action(district_id, role, user, "filter");
+}
+
+// ============================================================
+//  HELP
+// ============================================================
+
+void handle_help(void) {
+    printf("\n");
+    // Top border (75 '=' characters)
+    printf(COLOR_CYAN STYLE_BOLD "  ╔═══════════════════════════════════════════════════════════════════════════╗\n");
+    
+    // Title row (26 spaces + 23 text chars + 26 spaces = 75 total inner width)
+    printf("  ║                          CITY MANAGER - COMMANDS                          ║\n");
+    
+    // Middle separator
+    printf("  ╠═══════════════════════════════════════════════════════════════════════════╣\n" COLOR_RESET);
+
+    const char *cmds[][2] = {
+        {"--add <district>",               "Append a new report"},
+        {"--list <district>",              "List all reports + file info"},
+        {"--view <district> <id>",         "Print full report details"},
+        {"--remove_report <district> <id>","Remove a report (manager only)"},
+        {"--update_threshold <d> <val>",   "Update severity threshold (manager)"},
+        {"--filter <district> <cond...>",  "Filter: field:op:value"},
+        {"--help",                         "Show this menu"},
+        {NULL, NULL}
+    };
+
+    for (int i = 0; cmds[i][0]; i++) {
+        // Inner width calculation: 
+        // 1 space + 34 chars (left) + 1 space + 38 chars (right) + 1 space = 75 total width
+        printf("  " COLOR_CYAN "║" COLOR_RESET " " COLOR_YELLOW STYLE_BOLD "%-34s" COLOR_RESET
+               " %-38s " COLOR_CYAN "║\n" COLOR_RESET, cmds[i][0], cmds[i][1]);
+    }
+    
+    // Bottom border
+    printf(COLOR_CYAN STYLE_BOLD "  ╚═══════════════════════════════════════════════════════════════════════════╝\n\n" COLOR_RESET);
+    
+    printf("  Fields for filter: " STYLE_BOLD "severity, category, inspector, timestamp\n" COLOR_RESET);
+    printf("  Operators:         " STYLE_BOLD "==  !=  <  <=  >  >=\n\n" COLOR_RESET);
 }
