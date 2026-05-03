@@ -293,60 +293,30 @@ void handle_add(const char *district_id, const char *role, const char *user) {
 }
 
 // ============================================================
-//  REMOVE REPORT
+//  REMOVE Direcortory (by ID, with compaction)
 // ============================================================
 
-void handle_remove(const char *district_id, const char *report_id, const char *role, const char *user) {
-    print_banner(role, user);
+    void handle_remove_district(const char *district_id, const char *role, const char *user) {
 
-    if (strcmp(role, "manager") != 0) {
-        printf(COLOR_RED "  ╳  Only managers may remove reports.\n\n" COLOR_RESET);
-        return;
+        if(strcmp(role, "manager") != 0) {
+            printf(COLOR_RED "  ╳  Only managers may remove reports.\n\n" COLOR_RESET);
+            return;
+        }
+        if(!check_role_permission(district_id, role, 1)) return;
+        char command[256];
+        char link_file_name[1024];
+        snprintf(link_file_name, sizeof(link_file_name), "active_reports-%s", district_id);
+        snprintf(command, sizeof(command), "rm -r %s %s", district_id , link_file_name);
+        int ret = system(command);
+        if(ret == -1) {
+            printf(COLOR_RED "  ✗  Failed to execute remove command.\n\n" COLOR_RESET);
+            return;
+        }
+        printf("  " COLOR_GREEN STYLE_BOLD "✓  District '%s' removed.\n\n" COLOR_RESET, district_id);
+        char action_buf[128];
+        snprintf(action_buf, sizeof(action_buf), "remove district");
+        log_action(district_id, role, user, action_buf);
     }
-
-    char file_path[2048];
-    snprintf(file_path, sizeof(file_path), "%s/reports.dat", district_id);
-    if (!check_role_permission(file_path, role, 1)) return;
-
-    int target_id = atoi(report_id);
-
-    progress_bar("Scanning records", 15, 30000);
-
-    int fd = open(file_path, O_RDWR);
-    if (fd == -1) { printf(COLOR_RED "  ✗  Cannot open %s\n" COLOR_RESET, file_path); return; }
-
-    struct stat st;
-    fstat(fd, &st);
-    int total = (int)(st.st_size / sizeof(Record));
-
-    int target_index = -1;
-    Record tmp;
-    for (int i = 0; i < total; i++) {
-        lseek(fd, (off_t)i * sizeof(Record), SEEK_SET);
-        read(fd, &tmp, sizeof(Record));
-        if (tmp.id == target_id) { target_index = i; break; }
-    }
-
-    if (target_index == -1) {
-        printf(COLOR_YELLOW "  ⚠  Report ID %d not found in '%s'.\n\n" COLOR_RESET, target_id, district_id);
-        close(fd); return;
-    }
-
-    for (int i = target_index + 1; i < total; i++) {
-        lseek(fd, (off_t)i * sizeof(Record), SEEK_SET);
-        read(fd, &tmp, sizeof(Record));
-        lseek(fd, (off_t)(i - 1) * sizeof(Record), SEEK_SET);
-        write(fd, &tmp, sizeof(Record));
-    }
-    ftruncate(fd, (off_t)(total - 1) * sizeof(Record));
-    close(fd);
-
-    printf("  " COLOR_GREEN STYLE_BOLD "✓  Report %d removed" COLOR_RESET " from '%s'.\n\n", target_id, district_id);
-
-    char action_buf[128];
-    snprintf(action_buf, sizeof(action_buf), "remove_report report_id=%d", target_id);
-    log_action(district_id, role, user, action_buf);
-}
 
 // ============================================================
 //  LIST  (table layout)
@@ -685,7 +655,7 @@ void handle_help(void) {
         {"--add <district>",               "Append a new report"},
         {"--list <district>",              "List all reports + file info"},
         {"--view <district> <id>",         "Print full report details"},
-        {"--remove_report <district> <id>","Remove a report (manager only)"},
+        {"--remove_district <district_id> ","Remove a district (manager only)"},
         {"--update_threshold <d> <val>",   "Update severity threshold (manager)"},
         {"--filter <district> <cond...>",  "Filter: field:op:value"},
         {"--help",                         "Show this menu"},

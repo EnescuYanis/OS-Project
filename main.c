@@ -70,13 +70,12 @@ int main(int argc, char *argv[]) {
         if (!district) { printf(COLOR_RED "[ERROR]" COLOR_RESET " --add requires <district_id>.\n"); return 1; }
         handle_add(district, role, user);
 
-    } else if (strcmp(command, "remove_report") == 0) {
-        if (!district || !extra_arg) {
-            printf(COLOR_RED "[ERROR]" COLOR_RESET " --remove_report requires <district_id> <report_id>.\n"); return 1;
-        }
-        handle_remove(district, extra_arg, role, user);
-
-    } else if (strcmp(command, "list") == 0) {
+    }
+    else if (strcmp(command, "remove_district") == 0) {
+        if (!district) { printf(COLOR_RED "[ERROR]" COLOR_RESET " --remove_district requires <district_id>.\n"); return 1; }
+        handle_remove_district(district,role, user);
+    }
+    else if (strcmp(command, "list") == 0) {
         if (!district) { printf(COLOR_RED "[ERROR]" COLOR_RESET " --list requires <district_id>.\n"); return 1; }
         handle_list(district, role, user);
 
