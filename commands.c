@@ -253,9 +253,9 @@ Record add_record_file(const char *user) {
 
 void handle_add(const char *district_id, const char *role, const char *user) {
     print_banner(role, user);
-    printf(COLOR_CYAN STYLE_BOLD "  ╔═══ ADD REPORT ══════════════════════╗\n" COLOR_RESET);
-    printf(COLOR_CYAN            "  ║  District: %-26s║\n" COLOR_RESET, district_id);
-    printf(COLOR_CYAN STYLE_BOLD "  ╚══════════════════════════════════════╝\n\n" COLOR_RESET);
+    printf(COLOR_CYAN STYLE_BOLD "  ╔═══ ADD REPORT ═════════════════════════╗\n" COLOR_RESET);
+    printf(COLOR_CYAN            "  ║  District: %-26s  ║\n" COLOR_RESET, district_id);
+    printf(COLOR_CYAN STYLE_BOLD "  ╚════════════════════════════════════════╝\n\n" COLOR_RESET);
 
     progress_bar("Preparing district", 20, 40000);
 
@@ -318,22 +318,22 @@ void handle_add(const char *district_id, const char *role, const char *user) {
         log_action(district_id, role, user, action_buf);
     }
 
-// ============================================================
-//  LIST  (table layout)
-// ============================================================
+    // ============================================================
+    //  LIST  (table layout)
+    // ============================================================
 
-void handle_list(const char *district_id, const char *role, const char *user) {
-    print_banner(role, user);
+    void handle_list(const char *district_id, const char *role, const char *user) {
+        print_banner(role, user);
 
-    char file_path[2048];
-    snprintf(file_path, sizeof(file_path), "%s/reports.dat", district_id);
-    if (!check_role_permission(file_path, role, 0)) return;
+        char file_path[2048];
+        snprintf(file_path, sizeof(file_path), "%s/reports.dat", district_id);
+        if (!check_role_permission(file_path, role, 0)) return;
 
-    struct stat file_stat;
-    if (stat(file_path, &file_stat) == -1) {
-        printf(COLOR_RED "  ✗  Cannot access reports for '%s'.\n\n" COLOR_RESET, district_id);
-        return;
-    }
+        struct stat file_stat;
+        if (stat(file_path, &file_stat) == -1) {
+            printf(COLOR_RED "  ✗  Cannot access reports for '%s'.\n\n" COLOR_RESET, district_id);
+            return;
+        }
 
     // Symlink check via lstat
     char link_name[1024];
