@@ -2,4 +2,5 @@
 my_tool
 a.out
 *.o
-.ghc/
+*.ghc
+*.swp
